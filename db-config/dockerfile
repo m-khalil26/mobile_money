@@ -1,0 +1,24 @@
+# Utiliser la dernière version stable de PostgreSQL
+FROM postgres:15
+
+# Variables d'environnement pour la configuration de la base
+ENV POSTGRES_DB=wallet_db
+ENV POSTGRES_USER=admin
+ENV POSTGRES_PASSWORD=change_this_password
+
+# Copier le script d'initialisation
+COPY init.sql /docker-entrypoint-initdb.d/
+
+# Créer un répertoire pour les configurations personnalisées
+RUN mkdir -p /etc/postgresql/conf.d/
+
+# Créer un fichier de configuration personnalisé
+RUN echo "listen_addresses = '*'" > /etc/postgresql/conf.d/custom.conf && \
+    echo "ssl = on" >> /etc/postgresql/conf.d/custom.conf && \
+    echo "max_connections = 100" >> /etc/postgresql/conf.d/custom.conf
+
+# Exposer le port standard de PostgreSQL
+EXPOSE 5432
+
+# Définir les permissions correctes
+RUN chown postgres:postgres /etc/postgresql/conf.d/custom.conf
