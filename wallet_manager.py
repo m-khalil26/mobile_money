@@ -32,10 +32,7 @@ class WalletManager:
 
     def create_wallet(self):
         """Create a new Ethereum wallet"""
-        # Enable creation of private keys
         Account.enable_unaudited_hdwallet_features()
-        
-        # Generate a random private key
         private_key = "0x" + secrets.token_hex(32)
         account = Account.from_key(private_key)
         
@@ -57,23 +54,56 @@ class WalletManager:
                 )
             conn.commit()
 
+    def get_user_address(self, phone_number):
+        """Retrieve wallet address from database based on phone number"""
+        with psycopg2.connect(**self.db_params) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT wallet_address 
+                    FROM wallet_info 
+                    WHERE phone_number = %s
+                    """,
+                    (phone_number,)
+                )
+                result = cur.fetchone()
+                
+                if result:
+                    return result[0]  
+                return None  
+            
+
+    def get_user_private_key(self, phone_number):
+        """Retrieve private key from database based on phone number"""
+        with psycopg2.connect(**self.db_params) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT private_key 
+                    FROM wallet_info 
+                    WHERE phone_number = %s
+                    """,
+                    (phone_number,)
+                )
+                result = cur.fetchone()
+                
+                if result:
+                    return result[0]  
+                return None  
+
     def process_phone_number(self, phone_number):
         """Main function to process phone number and create wallet"""
         try:
-            # Validate phone number
             validated_number = self.validate_phone_number(phone_number)
             
-            # Check if phone number exists
             if self.check_phone_exists(validated_number):
                 return {
                     "success": False,
                     "message": "Phone number already has a wallet associated"
                 }
             
-            # Create new wallet
             wallet = self.create_wallet()
             
-            # Store in database
             self.store_wallet(validated_number, wallet["address"], wallet["private_key"])
             
             return {
@@ -82,7 +112,6 @@ class WalletManager:
                 "data": {
                     "phone_number": validated_number,
                     "wallet_address": wallet["address"]
-                    # Note: Private key is stored in DB but not returned for security
                 }
             }
             
@@ -91,6 +120,11 @@ class WalletManager:
                 "success": False,
                 "message": f"Error processing request: {str(e)}"
             }
+    def check_balance(self, address: str):
+        my_address = self.w3.to_checksum_address(address)
+        balance_wei = self.w3.eth.get_balance(my_address)
+        balance_tbnb = self.web3.from_wei(balance_wei, 'ether')
+        print(f'The balance of tBNB in address {address} is: {balance_tbnb:.5f} tBNB')
 
 def main():
     """Example usage"""
