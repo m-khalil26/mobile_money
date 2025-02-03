@@ -1,0 +1,4 @@
+pip install python-telegram-bot python-dotenv web3
+pip update setuptools
+
+bot : 7471308316:AAHsoPMASL2YvyZkT1R8z5XFxgUll5b-XTM
