@@ -120,11 +120,7 @@ class WalletManager:
                 "success": False,
                 "message": f"Error processing request: {str(e)}"
             }
-    def check_balance(self, address: str):
-        my_address = self.w3.to_checksum_address(address)
-        balance_wei = self.w3.eth.get_balance(my_address)
-        balance_tbnb = self.web3.from_wei(balance_wei, 'ether')
-        print(f'The balance of tBNB in address {address} is: {balance_tbnb:.5f} tBNB')
+
 
 def main():
     """Example usage"""

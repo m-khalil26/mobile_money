@@ -1,52 +1,49 @@
+/**
+ *Submitted for verification at testnet.bscscan.com on 2025-02-02
+*/
+
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-
-contract MobileMoneyToken is ERC20, Ownable {
-    mapping(address => bool) public authorizedOperators;
+contract BNBTransfer {
+    // Mapping pour stocker les approbations
+    mapping(address => mapping(address => uint256)) public allowances;
     
-    constructor() ERC20("Mobile Money Token", "MMT") {
-        _mint(msg.sender, 1000000 * 10**decimals()); // Initial supply
+    // Events
+    event Transfer(address indexed from, address indexed to, uint256 amount);
+    event Approval(address indexed owner, address indexed spender, uint256 amount);
+    
+    // Fonction pour approuver un spender
+    function approve(address spender, uint256 amount) public {
+        allowances[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
     }
     
-    // Permet d'ajouter ou retirer des opérateurs autorisés (le backend)
-    function setOperator(address operator, bool status) public onlyOwner {
-        authorizedOperators[operator] = status;
+    // Vérifier l'allowance
+    function allowance(address owner, address spender) public view returns (uint256) {
+        return allowances[owner][spender];
     }
     
-    // Override du transferFrom pour ajouter la vérification des opérateurs
-    function transferFrom(
-        address sender,
-        address recipient,
-        uint256 amount
-    ) public virtual override returns (bool) {
-        require(
-            authorizedOperators[msg.sender] || allowance(sender, msg.sender) >= amount,
-            "Transfer amount exceeds allowance and sender is not an authorized operator"
-        );
+    // Fonction de transfert
+    function transferFrom(address from, address to, uint256 amount) public payable {
+        require(allowances[from][msg.sender] >= amount, "Transfer amount exceeds allowance");
+        require(msg.value >= amount, "Insufficient BNB sent");
         
-        _transfer(sender, recipient, amount);
+        allowances[from][msg.sender] -= amount;
         
-        // Si ce n'est pas un opérateur autorisé, on réduit l'allowance
-        if (!authorizedOperators[msg.sender]) {
-            _approve(sender, msg.sender, allowance(sender, msg.sender) - amount);
-        }
+        // Transfer BNB
+        payable(to).transfer(amount);
         
-        return true;
+        emit Transfer(from, to, amount);
     }
     
-    // Fonction pour déposer des BNB et recevoir des tokens
-    function deposit() public payable {
-        require(msg.value > 0, "Must send BNB");
-        _mint(msg.sender, msg.value);
+    // Fonction pour récupérer le solde du contrat
+    function getBalance() public view returns (uint256) {
+        return address(this).balance;
     }
     
-    // Fonction pour retirer des BNB en brûlant des tokens
-    function withdraw(uint256 amount) public {
-        require(balanceOf(msg.sender) >= amount, "Insufficient balance");
-        _burn(msg.sender, amount);
-        payable(msg.sender).transfer(amount);
+    // Fonction pour déposer des BNB dans le contrat
+    receive() external payable {
+        emit Transfer(msg.sender, address(this), msg.value);
     }
 }

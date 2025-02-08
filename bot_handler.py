@@ -1,3 +1,4 @@
+from eth_account import Account
 import telebot
 from transaction_manager import BSCTransactionManager
 from wallet_manager import WalletManager
@@ -14,6 +15,7 @@ user_data = UserData()
 bot = telebot.TeleBot("7471308316:AAHsoPMASL2YvyZkT1R8z5XFxgUll5b-XTM")
 tm = BSCTransactionManager()
 contract_address = "0xEd25d434a8bc42c1c213fA1a74b96f57c9eE6697"
+collaboratif_payment_contract="0x4EAcF7b4b0023B336fa91ce7439fF0b5dD3fED4D"
 tm.initialize_contract(contract_address)
 wm = WalletManager()
 
@@ -55,6 +57,42 @@ def request_phone_for_wallet(message):
         "Pour créer ton wallet, partage d'abord ton numéro de téléphone !",
         reply_markup=markup
     )
+
+@bot.message_handler(commands=['register'])
+def handle_register(message):
+    try:
+        parts = message.text.split()
+        if len(parts) != 2:
+            bot.reply_to(message, "Format incorrect. Utilise: /register <private_key>")
+            return
+        
+        private_key = parts[1]
+        
+        if not private_key.startswith('0x'):
+            private_key = '0x' + private_key
+            
+        try:
+            account = Account.from_key(private_key)
+            derived_address = account.address
+            print(f"Derived address from private key: {derived_address}")
+            
+            user_data.pending_private_key = private_key
+            user_data.last_command = 'register'
+            
+            markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True)
+            button = telebot.types.KeyboardButton(text="Share Phone Number", request_contact=True)
+            markup.add(button)
+            
+            bot.send_message(
+                message.chat.id,
+                "Private key valide ! Pour finaliser l'enregistrement, partage ton numéro de téléphone.",
+                reply_markup=markup
+            )
+        except Exception as e:
+            bot.reply_to(message, f"❌ Clé privée invalide: {str(e)}")
+            
+    except Exception as e:
+        bot.reply_to(message, f"❌ Erreur: {str(e)}")
 
 @bot.message_handler(content_types=['contact'])
 def handle_all_contacts(message):
@@ -138,46 +176,6 @@ def handle_send(message):
     except Exception as e:
         bot.reply_to(message, f"Erreur: {str(e)}")
 
-# @bot.message_handler(commands=['send'])
-# def handle_send(message):
-#     if not user_data.phone_number:
-#         bot.reply_to(message, "Tu dois d'abord te connecter avec /connection")
-#         return
-        
 
-#     try:
-#         parts = message.text.split()
-#         if len(parts) != 3:
-#             bot.reply_to(message, "Format incorrect. Utilise: /send <address> <amount>")
-#             return
-        
-#         _, address, amount = parts
-#         if not address.startswith('0x') or len(address) != 42:
-#             bot.reply_to(message, "Addresse BNB invalide")
-#             return
-        
-#         try:
-#             amount = float(amount)
-#         except ValueError:
-#             bot.reply_to(message, "Le montant doit être un nombre")
-#             return
-
-        
-#         try:
-#             result = tm.approve_and_transfer(
-#                 wm.get_user_address(user_data.phone_number),
-#                 address,
-#                 address,
-#                 amount,
-#                 wm.get_user_private_key(user_data.phone_number),
-#                 wait_time=20  
-#             )
-#             bot.reply_to(message, f"Transaction envoyée avec succès!\n {result}")
-#         except Exception as e:
-#             bot.reply_to(message, f"Erreur lors de la transaction: {str(e)}")
-#         return address, amount
-    
-#     except Exception as e:
-#         bot.reply_to(message, f"Erreur: {str(e)}")
 
 bot.polling()
