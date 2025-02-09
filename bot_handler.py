@@ -120,7 +120,7 @@ def handle_register(message):
 def handle_all_contacts(message):
     user_session = get_user_session(message.chat.id)
     phone_number = '+'+ message.contact.phone_number
-    
+   
     if user_session.last_command == 'connection':
         print("connection")
         if wm.check_phone_exists(phone_number):
@@ -128,10 +128,10 @@ def handle_all_contacts(message):
             bot.reply_to(message, "Connexion réussie ! Tu peux maintenant utiliser le bot.")
         else:
             bot.reply_to(message, "Tu n'as pas encore de wallet associée à ce numéro de telephone ! Si tu veux en créer un utilise /create_wallet")
-    
+   
     elif user_session.last_command == 'create_wallet':
         print("creation")
-        if not wm.check_phone_exists( phone_number):
+        if not wm.check_phone_exists(phone_number):
             result = wm.process_phone_number(phone_number)
             if result["success"]:
                 response_message = (
@@ -142,11 +142,20 @@ def handle_all_contacts(message):
                 )
                 bot.reply_to(message, response_message)
             else:
-                bot.reply_to(message, f"❌ {result['message']}") 
-        else:   
-            bot.reply_to(message, f"❌ Tu as déjà un wallet associé à ce numéro de telephone !\nSi tu veux en associer un nouveau utilise /associate_wallet") 
-               
-
+                bot.reply_to(message, f"❌ {result['message']}")
+        else:  
+            bot.reply_to(message, f"❌ Tu as déjà un wallet associé à ce numéro de telephone !\nSi tu veux en associer un nouveau utilise /associate_wallet")
+    
+    elif user_session.last_command == 'register':
+        if not wm.check_phone_exists(phone_number):
+            try:
+                wm.store_wallet(phone_number, Account.from_key(user_session.pending_private_key).address, user_session.pending_private_key)
+                user_session.phone_number = phone_number
+                bot.reply_to(message, "✅ Wallet enregistré avec succès !")
+            except Exception as e:
+                bot.reply_to(message, f"❌ Erreur lors de l'enregistrement: {str(e)}")
+        else:
+            bot.reply_to(message, "❌ Ce numéro de téléphone est déjà associé à un wallet !")
 
 
 @bot.message_handler(commands=['balance'])
@@ -352,6 +361,17 @@ def get_group_info(message):
         
     except Exception as e:
         bot.reply_to(message, f"❌ Erreur: {str(e)}")
+    
+@bot.message_handler(commands=['deconnect'])
+def handle_disconnect(message):
+    user_session = get_user_session(message.chat.id)
+    if user_session.phone_number:
+        user_session.phone_number = None
+        user_session.last_command = None
+        user_session.pending_private_key = None
+        bot.reply_to(message, "Tu as été déconnecté avec succès !")
+    else:
+        bot.reply_to(message, "Tu n'es pas connecté !")
 
 
 
