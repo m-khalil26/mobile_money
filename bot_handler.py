@@ -1,5 +1,7 @@
+from datetime import datetime
 from eth_account import Account
 import telebot
+from web3 import Web3
 from transaction_manager import BSCTransactionManager
 from wallet_manager import WalletManager
 # si j'ai plusieurs instances ithetelfara ?
@@ -8,15 +10,26 @@ from wallet_manager import WalletManager
 class UserData:
     def __init__(self):
         self.phone_number = None
+        self.last_command = None
+        self.pending_private_key = None
+
+
+user_sessions = {}
+
+def get_user_session(chat_id):
+    if chat_id not in user_sessions:
+        user_sessions[chat_id] = UserData()
+    return user_sessions[chat_id]
+
 
 # Initialize the global data
 user_data = UserData()
 
 bot = telebot.TeleBot("7471308316:AAHsoPMASL2YvyZkT1R8z5XFxgUll5b-XTM")
 tm = BSCTransactionManager()
-contract_address = "0xEd25d434a8bc42c1c213fA1a74b96f57c9eE6697"
-collaboratif_payment_contract="0x4EAcF7b4b0023B336fa91ce7439fF0b5dD3fED4D"
-tm.initialize_contract(contract_address)
+contract_address = Web3.to_checksum_address("0xEd25d434a8bc42c1c213fA1a74b96f57c9eE6697")
+collaboratif_payment_contract = Web3.to_checksum_address("0x48ace74fdaaf87e32b71ff4fc8ed752389424153")
+tm.initialize_contracts(contract_address,collaboratif_payment_contract)
 wm = WalletManager()
 
 @bot.message_handler(commands=['start'])
@@ -28,8 +41,12 @@ def send_welcome(message):
         "/create_wallet - Créer votre wallet\n"
         "/balance - Regardez la balance de votre wallet\n"
         "/send <address> <amount> - Envoyez des BNB à une addresse\n"
-        "/deconnect - Deconnectez vous du serveur"
-        "/address - Récuperez votre adresse")
+        "/deconnect - Deconnectez vous du serveur\n"
+        "/address - Récuperez votre adresse\n"
+        "/creategroup <montant> <beneficiaire> <description> - Créer un groupe de paiement\n"
+        "/contribute <group_id> <montant> - Contribuer à un groupe\n"
+        "/groupinfo <group_id> - Voir les infos d'un groupe")
+
 
 @bot.message_handler(commands=['connection'])
 def request_connection(message):
@@ -175,6 +192,151 @@ def handle_send(message):
    
     except Exception as e:
         bot.reply_to(message, f"Erreur: {str(e)}")
+
+
+
+@bot.message_handler(commands=['creategroup'])
+def create_group(message):
+    if not user_data.phone_number:
+        bot.reply_to(message, "Tu dois d'abord te connecter avec /connection")
+        return
+        
+    try:
+        parts = message.text.split()
+        if len(parts) < 4:
+            bot.reply_to(message, "Format incorrect. Utilise: /creategroup <montant> <beneficiaire> <description>")
+            return
+            
+        amount = float(parts[1])
+        beneficiary = parts[2]
+        description = ' '.join(parts[3:])
+            
+        if not beneficiary.startswith('0x') or len(beneficiary) != 42:
+            bot.reply_to(message, "Adresse du bénéficiaire invalide")
+            return
+            
+        creator_address = wm.get_user_address(user_data.phone_number)
+        private_key = wm.get_user_private_key(user_data.phone_number)            
+        result = tm.create_group_payment(
+            creator_address,
+            amount,
+            beneficiary,
+            private_key
+        )
+        
+        group_id = result.get('group_id', result['hash'])
+        details = tm.get_group_details(group_id)
+        
+        bot.reply_to(
+            message,
+            f"✅ Groupe de paiement créé !\n"
+            f"ID du groupe: {group_id}\n"
+            f"Montant cible: {amount} BNB\n"
+            f"Créateur: {details['owner']}\n"
+            f"Bénéficiaire: {details['beneficiary']}\n"
+            f"Description: {description}\n\n"
+            f"Pour contribuer, utilisez:\n"
+            f"/contribute {group_id} <montant>"
+        )
+            
+    except Exception as e:
+        bot.reply_to(message, f"❌ Erreur: {str(e)}")
+
+
+
+
+@bot.message_handler(commands=['address'])
+def get_address(message):
+    if not user_data.phone_number:
+        bot.reply_to(message, "Tu dois d'abord te connecter avec /connection")
+        return
+    address= wm.get_user_address(user_data.phone_number)
+    response = (
+            f"✅ Addresse :{address} \n"
+        )
+        
+    bot.reply_to(message, response)
+
+@bot.message_handler(commands=['contribute'])
+def contribute_to_group(message):
+    if not user_data.phone_number:
+        bot.reply_to(message, "Tu dois d'abord te connecter avec /connection")
+        return
+    
+    try:
+        parts = message.text.split()
+        if len(parts) != 3:
+            bot.reply_to(message, "Format incorrect. Utilise: /contribute <group_id> <montant>")
+            return
+        
+        group_id = parts[1]
+        amount = float(parts[2])
+        
+        group_details = tm.get_group_details(group_id)
+        if group_details['completed']:
+            bot.reply_to(message, "Ce groupe de paiement est déjà terminé")
+            return
+        
+        from_address = wm.get_user_address(user_data.phone_number)
+        private_key = wm.get_user_private_key(user_data.phone_number)
+        
+        result = tm.contribute_to_group(
+            group_id,
+            from_address,
+            amount,
+            private_key
+        )
+        
+        current_balance = tm.get_group_balance(group_id)
+        target_amount = group_details['targetAmount']
+        
+        response = (
+            f"✅ Contribution effectuée !\n"
+            f"Montant: {amount} BNB\n"
+            f"Transaction: {result['hash']}\n"
+            f"Progress: {current_balance}/{target_amount} BNB ({(current_balance/target_amount)*100:.1f}%)"
+        )
+        
+        bot.reply_to(message, response)
+        
+    except Exception as e:
+        bot.reply_to(message, f"❌ Erreur: {str(e)}")
+
+@bot.message_handler(commands=['groupinfo'])
+def get_group_info(message):
+    try:
+        parts = message.text.split()
+        if len(parts) != 2:
+            bot.reply_to(message, "Format incorrect. Utilise: /groupinfo <group_id>")
+            return
+        
+        group_id = parts[1]
+        details = tm.get_group_details(group_id)
+        current_balance = tm.get_group_balance(group_id)
+        
+        # Ajout d'une vérification pour éviter la division par zéro
+        if details['targetAmount'] == 0:
+            progress = 0
+        else:
+            progress = (current_balance/details['targetAmount'])*100
+            
+        response = (
+            f"📊 Informations du groupe\n\n"
+            f"Créateur: {details['owner']}\n"
+            f"Montant cible: {details['targetAmount']} BNB\n"
+            f"Montant actuel: {current_balance} BNB\n"
+            f"Progress: {progress:.1f}%\n"
+            f"Statut: {'✅ Complété' if details['completed'] else '⏳ En cours'}\n"
+            f"Bénéficiaire: {details['beneficiary']}\n"
+            f"Nombre de contributeurs: {len(details['contributors'])}"
+        )
+        
+        bot.reply_to(message, response)
+        
+    except Exception as e:
+        bot.reply_to(message, f"❌ Erreur: {str(e)}")
+
+
 
 
 
