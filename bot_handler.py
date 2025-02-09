@@ -22,8 +22,7 @@ def get_user_session(chat_id):
     return user_sessions[chat_id]
 
 
-# Initialize the global data
-user_data = UserData()
+
 
 bot = telebot.TeleBot("7471308316:AAHsoPMASL2YvyZkT1R8z5XFxgUll5b-XTM")
 tm = BSCTransactionManager()
@@ -50,7 +49,8 @@ def send_welcome(message):
 
 @bot.message_handler(commands=['connection'])
 def request_connection(message):
-    user_data.last_command = 'connection'
+    user_session = get_user_session(message.chat.id)  # Obtenir la session de l'utilisateur
+    user_session.last_command = 'connection'
     markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True)
     button = telebot.types.KeyboardButton(text="Share Phone Number", request_contact=True)
     markup.add(button)
@@ -64,7 +64,10 @@ def request_connection(message):
 
 @bot.message_handler(commands=['create_wallet'])
 def request_phone_for_wallet(message):
-    user_data.last_command = 'create_wallet'
+    
+    user_session = get_user_session(message.chat.id)  # Obtenir la session de l'utilisateur
+    user_session.last_command = 'create_wallet'
+
     markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True)
     button = telebot.types.KeyboardButton(text="Share Phone Number", request_contact=True)
     markup.add(button)
@@ -77,6 +80,8 @@ def request_phone_for_wallet(message):
 
 @bot.message_handler(commands=['register'])
 def handle_register(message):
+    user_session = get_user_session(message.chat.id)
+
     try:
         parts = message.text.split()
         if len(parts) != 2:
@@ -93,8 +98,8 @@ def handle_register(message):
             derived_address = account.address
             print(f"Derived address from private key: {derived_address}")
             
-            user_data.pending_private_key = private_key
-            user_data.last_command = 'register'
+            user_session.pending_private_key = private_key
+            user_session.last_command = 'register'
             
             markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True)
             button = telebot.types.KeyboardButton(text="Share Phone Number", request_contact=True)
@@ -113,17 +118,18 @@ def handle_register(message):
 
 @bot.message_handler(content_types=['contact'])
 def handle_all_contacts(message):
+    user_session = get_user_session(message.chat.id)
     phone_number = '+'+ message.contact.phone_number
     
-    if user_data.last_command == 'connection':
+    if user_session.last_command == 'connection':
         print("connection")
         if wm.check_phone_exists(phone_number):
-            user_data.phone_number = phone_number  
+            user_session.phone_number = phone_number  
             bot.reply_to(message, "Connexion réussie ! Tu peux maintenant utiliser le bot.")
         else:
             bot.reply_to(message, "Tu n'as pas encore de wallet associée à ce numéro de telephone ! Si tu veux en créer un utilise /create_wallet")
     
-    elif user_data.last_command == 'create_wallet':
+    elif user_session.last_command == 'create_wallet':
         print("creation")
         if not wm.check_phone_exists( phone_number):
             result = wm.process_phone_number(phone_number)
@@ -145,17 +151,22 @@ def handle_all_contacts(message):
 
 @bot.message_handler(commands=['balance'])
 def check_balance(message):
-    if not user_data.phone_number:
+    user_session = get_user_session(message.chat.id)
+    
+    
+    if not user_session.phone_number:
         bot.reply_to(message, "Tu dois d'abord te connecter avec /connection")
         return        
-    balance = tm.check_balance(wm.get_user_address(user_data.phone_number))
+    balance = tm.check_balance(wm.get_user_address(user_session.phone_number))
     bot.reply_to(message, f"Le solde du compte est de {balance} BNB")
 
 
 
 @bot.message_handler(commands=['send'])
 def handle_send(message):
-    if not user_data.phone_number:
+    user_session = get_user_session(message.chat.id)
+
+    if not user_session.phone_number:
         bot.reply_to(message, "Tu dois d'abord te connecter avec /connection")
         return
        
@@ -177,13 +188,13 @@ def handle_send(message):
             return
        
         try:
-            sender_address = wm.get_user_address(user_data.phone_number)
+            sender_address = wm.get_user_address(user_session.phone_number)
             result = tm.approve_and_transfer(
                 sender_address,                               # sender
                 address,                                      # recipient
                 sender_address,                               # spender (même que sender)
                 amount,
-                wm.get_user_private_key(user_data.phone_number),
+                wm.get_user_private_key(user_session.phone_number),
                 wait_time=20
             )
             bot.reply_to(message, f"Transaction envoyée avec succès!\nApprove: {result['approve_transaction']['hash']}\nTransfer: {result['transfer_transaction']['hash']}")
@@ -197,7 +208,9 @@ def handle_send(message):
 
 @bot.message_handler(commands=['creategroup'])
 def create_group(message):
-    if not user_data.phone_number:
+    user_session = get_user_session(message.chat.id)
+
+    if not user_session.phone_number:
         bot.reply_to(message, "Tu dois d'abord te connecter avec /connection")
         return
         
@@ -215,8 +228,8 @@ def create_group(message):
             bot.reply_to(message, "Adresse du bénéficiaire invalide")
             return
             
-        creator_address = wm.get_user_address(user_data.phone_number)
-        private_key = wm.get_user_private_key(user_data.phone_number)            
+        creator_address = wm.get_user_address(user_session.phone_number)
+        private_key = wm.get_user_private_key(user_session.phone_number)            
         result = tm.create_group_payment(
             creator_address,
             amount,
@@ -247,10 +260,12 @@ def create_group(message):
 
 @bot.message_handler(commands=['address'])
 def get_address(message):
-    if not user_data.phone_number:
+    user_session = get_user_session(message.chat.id)
+
+    if not user_session.phone_number:
         bot.reply_to(message, "Tu dois d'abord te connecter avec /connection")
         return
-    address= wm.get_user_address(user_data.phone_number)
+    address= wm.get_user_address(user_session.phone_number)
     response = (
             f"✅ Addresse :{address} \n"
         )
@@ -259,7 +274,9 @@ def get_address(message):
 
 @bot.message_handler(commands=['contribute'])
 def contribute_to_group(message):
-    if not user_data.phone_number:
+    user_session = get_user_session(message.chat.id)
+
+    if not user_session.phone_number:
         bot.reply_to(message, "Tu dois d'abord te connecter avec /connection")
         return
     
@@ -277,8 +294,8 @@ def contribute_to_group(message):
             bot.reply_to(message, "Ce groupe de paiement est déjà terminé")
             return
         
-        from_address = wm.get_user_address(user_data.phone_number)
-        private_key = wm.get_user_private_key(user_data.phone_number)
+        from_address = wm.get_user_address(user_session.phone_number)
+        private_key = wm.get_user_private_key(user_session.phone_number)
         
         result = tm.contribute_to_group(
             group_id,
